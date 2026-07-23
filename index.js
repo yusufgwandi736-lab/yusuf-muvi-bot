@@ -1,4 +1,3 @@
-
 const { default: makeWASocket, useMultiFileAuthState, downloadMediaMessage, DisconnectReason } = require('@whiskeysockets/baileys')
 const fs = require('fs')
 const axios = require('axios')
@@ -9,7 +8,7 @@ const http = require('http')
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "YOUR_GEMINI_KEY_HERE"
 const BOT_NAME = "Yusuf Muvi"
 
-let memory = fs.existsSync('./memory.json') ? JSON.parse(fs.readFileSync('./memory.json')) : { users: {} }
+let memory = fs.existsSync('./memory.json')? JSON.parse(fs.readFileSync('./memory.json')) : { users: {} }
 const saveMemory = () => fs.writeFileSync('./memory.json', JSON.stringify(memory, null, 2))
 
 let messageCache = new Map()
@@ -21,15 +20,33 @@ function isProofRequest(t){ return ['prove its you','prove it\'s you','are you r
 
 async function startBot(){
   const { state, saveCreds } = await useMultiFileAuthState('./auth')
-  const sock = makeWASocket({ auth: state, printQRInTerminal: false })
+  const sock = makeWASocket({
+    auth: state,
+    printQRInTerminal: true,
+    browser: ["Ubuntu", "Chrome", "22.04.4"]
+  })
 
   sock.ev.on('creds.update', saveCreds)
-  
+
+  // --- PAIRING CODE FIX FOR 2348121060140 ---
+  if(!state.creds.registered){
+    const phoneNumber = process.env.PHONE_NUMBER || "2348121060140"
+    setTimeout(async () => {
+      try {
+        let code = await sock.requestPairingCode(phoneNumber.replace(/[^0-9]/g, ''))
+        console.log(`\n============================\nPAIRING CODE FOR ${phoneNumber} IS: ${code}\n============================\nEnter this code in WhatsApp > Linked Devices > Link with phone number\n`)
+      } catch(e) {
+        console.log("Failed to get pairing code:", e.message)
+      }
+    }, 3000)
+  }
+
   sock.ev.on('connection.update', (u)=>{
     const { connection, lastDisconnect, qr } = u
     if(qr) { console.log("SCAN THIS QR:"); qrcode.generate(qr, {small:true}) }
     if(connection==='close'){
-      const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut
+      const shouldReconnect = lastDisconnect?.error?.output?.statusCode!== DisconnectReason.loggedOut
+      console.log("Connection closed, reconnecting:", shouldReconnect)
       if(shouldReconnect) startBot()
     }
     if(connection==='open') console.log(BOT_NAME+" is Live 🚀")
@@ -46,11 +63,9 @@ async function startBot(){
     const lower = text.toLowerCase()
     messageCache.set(msg.key.id, { text, from })
 
-    // Anti-Spam
     const now=Date.now(); let arr=spamMap.get(from)||[]; arr=arr.filter(t=>now-t<60000); arr.push(now); spamMap.set(from, arr)
     if(arr.length>10){ await sock.sendMessage(from, {text:'Abeg calm down 😅 Wait 1 min 🙏'}); return }
 
-    // Anti-ViewOnce
     if(msg.message.viewOnceMessage || msg.message.viewOnceMessageV2){
       try{
         const viewMsg = msg.message.viewOnceMessage?.message || msg.message.viewOnceMessageV2?.message
@@ -66,16 +81,13 @@ async function startBot(){
     }
     const user = memory.users[from]
 
-    // Auto React
     if(lower.includes('love')||lower.includes('❤️')) await sock.sendMessage(from, {react:{text:'❤️', key:msg.key}})
     if(lower.includes('lol')||lower.includes('😂')) await sock.sendMessage(from, {react:{text:'😂', key:msg.key}})
 
-    // Menu
     if(lower==='menu'||lower==='help'){
       await sock.sendMessage(from, {text:`*${BOT_NAME} MENU* 🚀\n\n💬 Just chat normally\n🌍 Say "speak hausa" / "speak pidgin" / "speak english"\n🎙️ Say "send voice note"\n🖼️ Say "prove it's you" for pic proof\n🎨 Send pic with caption "sticker"\n⏰ "remind me in 10 minutes to..."\n🕐 "what time is it"\n🌦️ "weather in Abuja"\n\nBuilt by Yusuf Muvi 💼`}); return
     }
 
-    // Proof Pic
     if(isProofRequest(text)){
       if(Date.now()-user.lastPicSent < 7200000){ await sock.sendMessage(from, {text:'I already sent proof pic, wait small 😊'}); return }
       const picPath='./my_pics/yusuf.jpg'; if(fs.existsSync(picPath)){
@@ -83,16 +95,14 @@ async function startBot(){
         await sock.sendMessage(from, {image: fs.readFileSync(picPath), caption:cap}); user.lastPicSent=Date.now(); saveMemory(); return
       }
     }
-    if((lower.includes('send me your pic')||lower.includes('send pic')) && !isProofRequest(text)){
+    if((lower.includes('send me your pic')||lower.includes('send pic')) &&!isProofRequest(text)){
       await sock.sendMessage(from, {text:'I no dey send pic anyhow 😊 Tell me "prove it\'s you" for proof 🚀'}); return
     }
 
-    // Sticker
     if(msg.message.imageMessage && lower.includes('sticker')){
       const buffer = await downloadMediaMessage(msg, 'buffer', {}, {}); await sock.sendMessage(from, {sticker: buffer}); return
     }
 
-    // Reminder
     if(lower.includes('remind me in')){
       const m = lower.match(/(\d+)\s*minute/); const mins = m? parseInt(m[1]):5; const task = text.split('to')[1]||'task'
       await sock.sendMessage(from, {text:`Okay! Remind in ${mins} mins to ${task} ⏰`}); setTimeout(()=>sock.sendMessage(from, {text:`⏰ Reminder: ${task}!!!`}), mins*60*1000); return
@@ -103,7 +113,6 @@ async function startBot(){
     if(lower.includes('who are you')){ await sock.sendMessage(from, {text:getRequestedLanguage(text)==='hausa'?'Ni Yusuf Muvi ne 🚀':getRequestedLanguage(text)==='pidgin'?'Na Yusuf Muvi be this 🚀':'Am Yusuf Muvi 🚀'}); return }
     if(lower.includes('who built you')||lower.includes('who created you')){ await sock.sendMessage(from, {text:'I was built and developed by Yusuf Muvi. 🚀 Yusuf is a skilled developer who created me as an intelligent assistant to handle real-time chats even when he is offline.'}); return }
 
-    // AI Brain - Default English
     await sock.sendPresenceUpdate('composing', from); await new Promise(r=>setTimeout(r, 1200+Math.random()*1500))
     const lang=getRequestedLanguage(text)
     try{
