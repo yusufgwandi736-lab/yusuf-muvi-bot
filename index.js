@@ -5,7 +5,7 @@ const http = require("http")
 http.createServer((req,res)=> res.end("Bot Running")).listen(process.env.PORT || 3000, ()=> console.log("Server started"))
 
 async function startBot(){
-const { state, saveCreds } = await useMultiFileAuthState("auth")
+const { state, saveCreds } = await useMultiFileAuthState("auth2")
 const { version } = await fetchLatestBaileysVersion()
 console.log("Using WA Version:", version)
 
