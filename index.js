@@ -3,7 +3,8 @@ import { Groq } from "groq-sdk"
 import qrcode from "qrcode-terminal"
 import fs from "fs"
 import pino from "pino"
-
+import http from "http"
+http.createServer((req,res)=>res.end("Yusuf Muvi Bot is Live")).listen(process.env.PORT || 3000)
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
 
 let memory = {}
